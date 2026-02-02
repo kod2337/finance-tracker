@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS income_entries (
   month INTEGER CHECK (month >= 1 AND month <= 12),
   year INTEGER NOT NULL,
   source_id UUID REFERENCES income_sources(id) ON DELETE CASCADE,
+  payment_frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (payment_frequency IN ('weekly', 'bi_weekly', 'monthly')),
   gross_amount DECIMAL(12, 2) NOT NULL CHECK (gross_amount >= 0),
   net_amount DECIMAL(12, 2) NOT NULL CHECK (net_amount >= 0),
   currency TEXT DEFAULT 'PHP',

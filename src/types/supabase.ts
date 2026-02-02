@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       income_sources: {
@@ -37,6 +37,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       income_entries: {
         Row: {
@@ -46,6 +47,7 @@ export interface Database {
           month: number
           year: number
           source_id: string
+          payment_frequency: 'weekly' | 'bi_weekly' | 'monthly'
           gross_amount: number
           net_amount: number
           currency: string
@@ -60,6 +62,7 @@ export interface Database {
           month: number
           year: number
           source_id: string
+          payment_frequency?: 'weekly' | 'bi_weekly' | 'monthly'
           gross_amount: number
           net_amount: number
           currency?: string
@@ -74,6 +77,7 @@ export interface Database {
           month?: number
           year?: number
           source_id?: string
+          payment_frequency?: 'weekly' | 'bi_weekly' | 'monthly'
           gross_amount?: number
           net_amount?: number
           currency?: string
@@ -81,6 +85,14 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "income_entries_source_id_fkey"
+            columns: ["source_id"]
+            referencedRelation: "income_sources"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       payout_categories: {
         Row: {
@@ -113,6 +125,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       payouts: {
         Row: {
@@ -154,7 +167,24 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "payouts_category_id_fkey"
+            columns: ["category_id"]
+            referencedRelation: "payout_categories"
+            referencedColumns: ["id"]
+          }
+        ]
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
     }
   }
 }
