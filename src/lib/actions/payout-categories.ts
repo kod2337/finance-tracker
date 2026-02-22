@@ -53,10 +53,12 @@ export async function createPayoutCategory(
   category: Omit<PayoutCategory, 'id' | 'created_at' | 'updated_at'>
 ): Promise<PayoutCategory> {
   const supabase = await createClient();
-  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('payout_categories')
-    .insert(category)
+    .insert({ ...category, user_id: user.id })
     .select()
     .single();
 

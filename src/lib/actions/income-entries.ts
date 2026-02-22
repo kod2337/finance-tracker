@@ -66,9 +66,12 @@ export async function getIncomeEntry(id: string) {
 
 export async function createIncomeEntry(entry: IncomeEntryInsert) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('income_entries')
-    .insert(entry)
+    .insert({ ...entry, user_id: user.id })
     .select()
     .single();
 
@@ -110,4 +113,30 @@ export async function getMonthlySummary(year: number, month: number) {
     totalNetIncome: totalNet,
     entryCount: entries.length,
   };
+}
+
+export async function getYearlyIncomeSummary(year: number) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('income_entries')
+    .select('month, gross_amount, net_amount')
+    .eq('year', year);
+
+  if (error) throw error;
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    monthName: monthNames[i],
+    grossIncome: 0,
+    netIncome: 0,
+  }));
+
+  (data || []).forEach((entry) => {
+    const m = months[entry.month - 1];
+    m.grossIncome += entry.gross_amount;
+    m.netIncome += entry.net_amount;
+  });
+
+  return months;
 }

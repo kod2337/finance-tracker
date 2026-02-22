@@ -29,9 +29,12 @@ export async function getActiveIncomeSources() {
 
 export async function createIncomeSource(source: IncomeSourceInsert) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('income_sources')
-    .insert(source)
+    .insert({ ...source, user_id: user.id })
     .select()
     .single();
 

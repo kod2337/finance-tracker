@@ -1,8 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
-import { getIncomeEntries, getMonthlySummary } from '@/lib/actions/income-entries';
+import { getIncomeEntries, getMonthlySummary, getYearlyIncomeSummary } from '@/lib/actions/income-entries';
+import { getYearlyPayoutsSummary } from '@/lib/actions/payouts';
 import { TrendingUp, Wallet, PiggyBank, DollarSign } from 'lucide-react';
 import { YearMonthFilter } from '@/components/shared/YearMonthFilter';
+import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
 
 export default async function DashboardPage({
   searchParams,
@@ -14,16 +16,22 @@ export default async function DashboardPage({
   const year = params.year ? parseInt(params.year) : currentDate.getFullYear();
   const month = params.month && params.month !== 'all' ? parseInt(params.month) : currentDate.getMonth() + 1;
 
-  const [summary, recentEntries] = await Promise.all([
+  const [summary, recentEntries, yearlyIncome, yearlyPayouts] = await Promise.all([
     getMonthlySummary(year, month),
     getIncomeEntries(year, month),
+    getYearlyIncomeSummary(year),
+    getYearlyPayoutsSummary(year),
   ]);
+
+  const currentMonthPayoutsData = yearlyPayouts.find((p) => p.month === month);
+  const currentMonthPayouts = currentMonthPayoutsData?.totalPayouts ?? 0;
+  const currentMonthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
 
   const stats = [
     {
       title: 'Total Gross Income',
       value: formatCurrency(summary.totalGrossIncome),
-      description: `${new Date(year, month - 1).toLocaleString('default', { month: 'long' })} ${year}`,
+      description: `${currentMonthName} ${year}`,
       icon: TrendingUp,
       color: 'text-blue-600',
       bgColor: 'bg-blue-100',
@@ -93,6 +101,15 @@ export default async function DashboardPage({
           </Card>
         ))}
       </div>
+
+      {/* Charts */}
+      <DashboardCharts
+        incomeData={yearlyIncome}
+        payoutsData={yearlyPayouts}
+        currentMonthNetIncome={summary.totalNetIncome}
+        currentMonthPayouts={currentMonthPayouts}
+        currentMonthName={currentMonthName}
+      />
 
       {/* Recent Entries */}
       <Card>

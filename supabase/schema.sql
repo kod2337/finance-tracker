@@ -4,6 +4,7 @@
 -- Income Sources Table
 CREATE TABLE IF NOT EXISTS income_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('salary', 'freelance', 'business', 'investment', 'other')),
   is_active BOOLEAN DEFAULT true,
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS income_sources (
 -- Income Entries Table
 CREATE TABLE IF NOT EXISTS income_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   date DATE NOT NULL,
   week INTEGER CHECK (week >= 1 AND week <= 5),
   month INTEGER CHECK (month >= 1 AND month <= 12),
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS income_entries (
 -- Payout Categories Table
 CREATE TABLE IF NOT EXISTS payout_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('savings', 'obligation', 'personal', 'expense', 'other')),
   target_amount DECIMAL(12, 2),
@@ -44,6 +47,7 @@ CREATE TABLE IF NOT EXISTS payout_categories (
 -- Payouts Table
 CREATE TABLE IF NOT EXISTS payouts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   date DATE NOT NULL,
   month INTEGER CHECK (month >= 1 AND month <= 12),
   year INTEGER NOT NULL,
@@ -70,11 +74,11 @@ ALTER TABLE income_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payout_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payouts ENABLE ROW LEVEL SECURITY;
 
--- Policies (allow all operations for now - add auth later)
-CREATE POLICY "Allow all operations on income_sources" ON income_sources FOR ALL USING (true);
-CREATE POLICY "Allow all operations on income_entries" ON income_entries FOR ALL USING (true);
-CREATE POLICY "Allow all operations on payout_categories" ON payout_categories FOR ALL USING (true);
-CREATE POLICY "Allow all operations on payouts" ON payouts FOR ALL USING (true);
+-- Policies: each user can only access their own data
+CREATE POLICY "Users own income_sources" ON income_sources FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own income_entries" ON income_entries FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own payout_categories" ON payout_categories FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own payouts" ON payouts FOR ALL USING (auth.uid() = user_id);
 
 -- Function to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

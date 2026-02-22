@@ -1,14 +1,33 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient } from '@supabase/ssr';
 
 export default async function proxy(request: NextRequest) {
-  const supabase = await createClient();
+  let supabaseResponse = NextResponse.next({ request });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Must use request/response cookies in middleware — NOT next/headers
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
 
-  // If user is not signed in and the current path is in dashboard, redirect to login
+  // Refresh session — this is critical for keeping the auth state in sync
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // If user is not signed in and trying to access protected routes, redirect to login
   if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
@@ -18,7 +37,8 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  return NextResponse.next();
+  // IMPORTANT: return supabaseResponse so updated session cookies are written
+  return supabaseResponse;
 }
 
 export const config = {

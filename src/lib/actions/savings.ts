@@ -1,42 +1,43 @@
 import { createClient } from '@/lib/supabase/server';
 
-export interface WeeklySavings {
+export interface WeeklyIncome {
   week: number;
   netAmount: number;
-  savings: number; // 40% of net amount
-  savingsRate: number; // percentage (default 0.4)
 }
 
 export interface MonthlySavings {
   month: number;
   year: number;
   monthName: string;
-  weeks: WeeklySavings[];
+  weeks: WeeklyIncome[];
   totalNetAmount: number;
-  totalSavings: number;
+  totalPayouts: number;
+  totalSavings: number; // = totalNetAmount - totalPayouts
 }
 
-export async function getSavingsByYear(
-  year: number,
-  savingsRate: number = 0.4
-): Promise<MonthlySavings[]> {
+export async function getSavingsByYear(year: number): Promise<MonthlySavings[]> {
   const supabase = await createClient();
-  
-  const { data, error } = await supabase
-    .from('income_entries')
-    .select('week, month, year, net_amount')
-    .eq('year', year)
-    .order('month', { ascending: true })
-    .order('week', { ascending: true });
 
-  if (error) {
-    throw new Error(`Failed to fetch savings data: ${error.message}`);
-  }
+  const [incomeResult, payoutsResult] = await Promise.all([
+    supabase
+      .from('income_entries')
+      .select('week, month, year, net_amount')
+      .eq('year', year)
+      .order('month', { ascending: true })
+      .order('week', { ascending: true }),
+    supabase
+      .from('payouts')
+      .select('month, amount')
+      .eq('year', year),
+  ]);
 
-  // Group by month and week
+  if (incomeResult.error) throw new Error(`Failed to fetch income: ${incomeResult.error.message}`);
+  if (payoutsResult.error) throw new Error(`Failed to fetch payouts: ${payoutsResult.error.message}`);
+
+  // Group income by month/week
   const monthsMap = new Map<number, MonthlySavings>();
-  
-  data.forEach((entry) => {
+
+  incomeResult.data.forEach((entry) => {
     if (!monthsMap.has(entry.month)) {
       monthsMap.set(entry.month, {
         month: entry.month,
@@ -44,61 +45,62 @@ export async function getSavingsByYear(
         monthName: getMonthName(entry.month),
         weeks: [],
         totalNetAmount: 0,
+        totalPayouts: 0,
         totalSavings: 0,
       });
     }
-    
+
     const monthData = monthsMap.get(entry.month)!;
-    
-    // Find or create week entry
-    let weekEntry = monthData.weeks.find(w => w.week === entry.week);
+    let weekEntry = monthData.weeks.find((w) => w.week === entry.week);
     if (!weekEntry) {
-      weekEntry = {
-        week: entry.week,
-        netAmount: 0,
-        savings: 0,
-        savingsRate,
-      };
+      weekEntry = { week: entry.week, netAmount: 0 };
       monthData.weeks.push(weekEntry);
     }
-    
-    // Accumulate amounts
+
     weekEntry.netAmount += entry.net_amount;
-    weekEntry.savings = weekEntry.netAmount * savingsRate;
-    
     monthData.totalNetAmount += entry.net_amount;
-    monthData.totalSavings = monthData.totalNetAmount * savingsRate;
   });
 
-  // Sort weeks within each month
-  monthsMap.forEach((month) => {
-    month.weeks.sort((a, b) => a.week - b.week);
+  // Add payouts per month
+  payoutsResult.data.forEach((payout) => {
+    const monthData = monthsMap.get(payout.month);
+    if (monthData) {
+      monthData.totalPayouts += payout.amount;
+    }
+  });
+
+  // Compute savings = net income - payouts
+  monthsMap.forEach((monthData) => {
+    monthData.totalSavings = Math.max(0, monthData.totalNetAmount - monthData.totalPayouts);
+    monthData.weeks.sort((a, b) => a.week - b.week);
   });
 
   return Array.from(monthsMap.values());
 }
 
-export async function getSavingsByMonth(
-  year: number,
-  month: number,
-  savingsRate: number = 0.4
-): Promise<MonthlySavings | null> {
+export async function getSavingsByMonth(year: number, month: number): Promise<MonthlySavings | null> {
   const supabase = await createClient();
-  
-  const { data, error } = await supabase
-    .from('income_entries')
-    .select('week, month, year, net_amount')
-    .eq('year', year)
-    .eq('month', month)
-    .order('week', { ascending: true });
 
-  if (error) {
-    throw new Error(`Failed to fetch savings data: ${error.message}`);
-  }
+  const [incomeResult, payoutsResult] = await Promise.all([
+    supabase
+      .from('income_entries')
+      .select('week, month, year, net_amount')
+      .eq('year', year)
+      .eq('month', month)
+      .order('week', { ascending: true }),
+    supabase
+      .from('payouts')
+      .select('amount')
+      .eq('year', year)
+      .eq('month', month),
+  ]);
 
-  if (data.length === 0) {
-    return null;
-  }
+  if (incomeResult.error) throw new Error(`Failed to fetch income: ${incomeResult.error.message}`);
+  if (payoutsResult.error) throw new Error(`Failed to fetch payouts: ${payoutsResult.error.message}`);
+
+  if (incomeResult.data.length === 0) return null;
+
+  const totalPayouts = payoutsResult.data.reduce((sum, p) => sum + p.amount, 0);
 
   const monthData: MonthlySavings = {
     month,
@@ -106,28 +108,21 @@ export async function getSavingsByMonth(
     monthName: getMonthName(month),
     weeks: [],
     totalNetAmount: 0,
+    totalPayouts,
     totalSavings: 0,
   };
 
-  data.forEach((entry) => {
-    let weekEntry = monthData.weeks.find(w => w.week === entry.week);
+  incomeResult.data.forEach((entry) => {
+    let weekEntry = monthData.weeks.find((w) => w.week === entry.week);
     if (!weekEntry) {
-      weekEntry = {
-        week: entry.week,
-        netAmount: 0,
-        savings: 0,
-        savingsRate,
-      };
+      weekEntry = { week: entry.week, netAmount: 0 };
       monthData.weeks.push(weekEntry);
     }
-    
     weekEntry.netAmount += entry.net_amount;
-    weekEntry.savings = weekEntry.netAmount * savingsRate;
-    
     monthData.totalNetAmount += entry.net_amount;
-    monthData.totalSavings = monthData.totalNetAmount * savingsRate;
   });
 
+  monthData.totalSavings = Math.max(0, monthData.totalNetAmount - monthData.totalPayouts);
   monthData.weeks.sort((a, b) => a.week - b.week);
 
   return monthData;
@@ -136,7 +131,7 @@ export async function getSavingsByMonth(
 function getMonthName(month: number): string {
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'July', 'August', 'September', 'October', 'November', 'December',
   ];
   return months[month - 1] || '';
 }

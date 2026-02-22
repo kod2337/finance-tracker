@@ -88,10 +88,12 @@ export async function createPayout(
   payout: Omit<Payout, 'id' | 'created_at' | 'updated_at' | 'payout_categories'>
 ): Promise<Payout> {
   const supabase = await createClient();
-  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('payouts')
-    .insert(payout)
+    .insert({ ...payout, user_id: user.id })
     .select()
     .single();
 
@@ -162,4 +164,28 @@ export async function getMonthlySummaryByCategory(month: number, year: number) {
   }
 
   return data || [];
+}
+
+export async function getYearlyPayoutsSummary(year: number) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('payouts')
+    .select('month, amount')
+    .eq('year', year);
+
+  if (error) throw new Error(`Failed to fetch yearly payouts: ${error.message}`);
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    monthName: monthNames[i],
+    totalPayouts: 0,
+  }));
+
+  (data || []).forEach((entry) => {
+    months[entry.month - 1].totalPayouts += entry.amount;
+  });
+
+  return months;
 }
